@@ -44,6 +44,52 @@ function contentType(filePath) {
   return map[ext] || 'application/octet-stream'
 }
 
+function isHttpUrl(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url)
+}
+
+/** 앱 origin + Firebase/Google 로그인에 필요한 호스트만 허용 */
+function isAllowedNavigation(url) {
+  if (!isHttpUrl(url)) return false
+  try {
+    const u = new URL(url)
+    if (appOrigin) {
+      const origin = new URL(appOrigin)
+      if (u.origin === origin.origin) return true
+    }
+    const host = u.hostname.toLowerCase()
+    if (host === 'localhost' || host === '127.0.0.1') return true
+    if (host === 'accounts.google.com') return true
+    if (host.endsWith('.google.com') && host.includes('accounts')) return true
+    if (host.endsWith('.firebaseapp.com')) return true
+    if (host.endsWith('.googleapis.com')) return true
+    return false
+  } catch {
+    return false
+  }
+}
+
+function hardenWebContents(contents) {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (isHttpUrl(url)) {
+      void shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
+
+  contents.on('will-navigate', (event, url) => {
+    if (!isAllowedNavigation(url)) {
+      event.preventDefault()
+    }
+  })
+
+  contents.on('will-redirect', (event, url) => {
+    if (!isAllowedNavigation(url)) {
+      event.preventDefault()
+    }
+  })
+}
+
 function startStaticServer() {
   return new Promise((resolve, reject) => {
     const root = distDir()
@@ -52,8 +98,10 @@ function startStaticServer() {
         const url = new URL(req.url || '/', 'http://127.0.0.1')
         let rel = decodeURIComponent(url.pathname)
         if (rel === '/') rel = '/index.html'
-        const filePath = path.normalize(path.join(root, rel))
-        if (!filePath.startsWith(root)) {
+        const rootResolved = path.resolve(root)
+        const filePath = path.resolve(path.join(rootResolved, rel))
+        const relToRoot = path.relative(rootResolved, filePath)
+        if (relToRoot.startsWith('..') || path.isAbsolute(relToRoot)) {
           res.writeHead(403)
           res.end('Forbidden')
           return
@@ -282,8 +330,5 @@ app.on('window-all-closed', () => {
 })
 
 app.on('web-contents-created', (_event, contents) => {
-  contents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
-  })
+  hardenWebContents(contents)
 })

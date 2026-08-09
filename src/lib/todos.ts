@@ -50,8 +50,24 @@ export function saveTodos(state: TodoState) {
   window.dispatchEvent(new CustomEvent('pintime:todos'))
   void import('./cloudSync').then((m) => {
     if (m.isApplyingRemoteTodos()) return
+    touchTodosLocalAt()
     m.schedulePushTodos(state)
   })
+}
+
+const TODO_AT_KEY = 'pintime:todos:updatedAt'
+
+export function loadTodosLocalAt(): number {
+  const n = Number(localStorage.getItem(TODO_AT_KEY) || 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+export function touchTodosLocalAt(at = Date.now()) {
+  localStorage.setItem(TODO_AT_KEY, String(at))
+}
+
+export function setTodosLocalAt(at: number) {
+  localStorage.setItem(TODO_AT_KEY, String(at))
 }
 
 export function toggleTodoDone(id: string): TodoState {

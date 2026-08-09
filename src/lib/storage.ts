@@ -9,10 +9,12 @@ import {
 } from './shareCodec'
 
 const CAL_KEY = 'pintime:calendar:v2'
+const CAL_AT_KEY = 'pintime:calendar:updatedAt'
 const ROOM_PREFIX = 'pintime:room:'
 const MY_NAME_KEY = 'pintime:myName'
 const MY_USER_ID_KEY = 'pintime:userId'
 const MY_ROOMS_KEY = 'pintime:myRooms'
+const LAST_AUTH_UID_KEY = 'pintime:lastAuthUid'
 
 export type CalendarState = {
   schedules: Schedule[]
@@ -40,8 +42,22 @@ export function saveCalendar(state: CalendarState) {
   localStorage.setItem(CAL_KEY, JSON.stringify(state))
   void import('./cloudSync').then((m) => {
     if (m.isApplyingRemoteCalendar()) return
+    touchCalendarLocalAt()
     m.schedulePushCalendar(state)
   })
+}
+
+export function loadCalendarLocalAt(): number {
+  const n = Number(localStorage.getItem(CAL_AT_KEY) || 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+export function touchCalendarLocalAt(at = Date.now()) {
+  localStorage.setItem(CAL_AT_KEY, String(at))
+}
+
+export function setCalendarLocalAt(at: number) {
+  localStorage.setItem(CAL_AT_KEY, String(at))
 }
 
 export function loadRoom(id: string): ShareRoom | null {
@@ -103,6 +119,29 @@ export function setBoundUserId(uid: string) {
   const trimmed = uid.trim()
   if (!trimmed) return
   localStorage.setItem(MY_USER_ID_KEY, trimmed)
+}
+
+/**
+ * 계정이 바뀌면 이전 사용자 로컬 데이터를 지운 뒤 true.
+ * 같은 계정이면 false.
+ */
+export function prepareAccountSwitch(nextUid: string): boolean {
+  const trimmed = nextUid.trim()
+  if (!trimmed) return false
+  const prev = localStorage.getItem(LAST_AUTH_UID_KEY)
+  localStorage.setItem(LAST_AUTH_UID_KEY, trimmed)
+  setBoundUserId(trimmed)
+  if (prev && prev !== trimmed) {
+    clearAllPinTimeData()
+    setBoundUserId(trimmed)
+    localStorage.setItem(LAST_AUTH_UID_KEY, trimmed)
+    return true
+  }
+  return false
+}
+
+export function clearLastAuthUid() {
+  localStorage.removeItem(LAST_AUTH_UID_KEY)
 }
 
 export function loadMyRooms(): MyRoomRef[] {

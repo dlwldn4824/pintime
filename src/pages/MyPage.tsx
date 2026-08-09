@@ -81,7 +81,7 @@ export function MyPage() {
   const [analyticsOn, setAnalyticsOn] = useState(() => loadAnalyticsConsent())
   const [displayName, setDisplayName] = useState(() => loadMyName())
   const [namePlaceholder] = useState(() => nameExamplePlaceholder())
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup')
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [signupName, setSignupName] = useState(() => loadMyName())
@@ -182,8 +182,8 @@ export function MyPage() {
             <h2 className="text-sm font-bold text-[var(--ink)]">계정</h2>
           </div>
           <p className="mt-1 text-[11px] leading-relaxed text-[var(--muted)]">
-            계정을 만들면 캘린더·할 일·공유 방이 저장돼요. 새 앱을 깔고
-            같은 계정으로 로그인하면 자동으로 불러와요.
+            이미 계정이 있으면 로그인하세요. 새 앱을 깔아도 같은 계정으로
+            로그인하면 일정·할 일·공유 방이 자동으로 복원돼요.
           </p>
 
           {!firebaseOn ? (
@@ -250,7 +250,24 @@ export function MyPage() {
                 type="button"
                 onClick={() => {
                   setAuthOk(null)
-                  void signOut()
+                  if (
+                    !window.confirm(
+                      '로그아웃할까요? 이 기기의 일정은 기본적으로 남아요.',
+                    )
+                  ) {
+                    return
+                  }
+                  const wipe = window.confirm(
+                    '이 기기에 저장된 일정·할 일·공유 방도 지울까요?\n\n다른 계정으로 바꿀 예정이면 「확인」을 누르세요.',
+                  )
+                  void signOut({ clearLocal: wipe }).then(() => {
+                    if (wipe) {
+                      setDisplayName('')
+                      setAuthOk('로그아웃 · 이 기기 데이터를 지웠어요')
+                    } else {
+                      setAuthOk('로그아웃했어요')
+                    }
+                  })
                 }}
                 className="w-full rounded-xl border border-[var(--line)] px-4 py-2.5 text-sm font-semibold text-[var(--ink)] hover:bg-[var(--bg)]"
               >
@@ -260,20 +277,6 @@ export function MyPage() {
           ) : (
             <div className="mt-3 space-y-3">
               <div className="flex gap-1 rounded-xl bg-[var(--bg)] p-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('signup')
-                    setAuthError(null)
-                  }}
-                  className={`flex-1 rounded-lg py-2 text-xs font-bold transition ${
-                    authMode === 'signup'
-                      ? 'bg-white text-[var(--tomato)] shadow-sm'
-                      : 'text-[var(--muted)]'
-                  }`}
-                >
-                  회원가입
-                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -287,6 +290,20 @@ export function MyPage() {
                   }`}
                 >
                   로그인
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('signup')
+                    setAuthError(null)
+                  }}
+                  className={`flex-1 rounded-lg py-2 text-xs font-bold transition ${
+                    authMode === 'signup'
+                      ? 'bg-white text-[var(--tomato)] shadow-sm'
+                      : 'text-[var(--muted)]'
+                  }`}
+                >
+                  회원가입
                 </button>
               </div>
 
@@ -306,7 +323,9 @@ export function MyPage() {
                             saveMyName(signupName.trim())
                           }
                         })
-                      : signInEmail(email, password)
+                      : signInEmail(email, password).then(() => {
+                          setAuthOk('로그인됨 · 데이터 불러오는 중…')
+                        })
                   void run
                     .catch((err: unknown) =>
                       setAuthError(firebaseAuthErrorMessage(err)),
@@ -374,6 +393,9 @@ export function MyPage() {
               >
                 Google로 계속
               </button>
+              <p className="text-center text-[10px] leading-relaxed text-[var(--muted)]">
+                브라우저(또는 앱 화면)로 이동한 뒤 이 앱으로 돌아와요.
+              </p>
 
               {authError && (
                 <p className="text-[11px] text-rose-600">{authError}</p>
@@ -521,7 +543,8 @@ export function MyPage() {
           </div>
           <p className="mt-1 text-[11px] leading-relaxed text-[var(--muted)]">
             데스크톱에 달력 창을 띄웁니다. 드래그로 옮기고, 다른 앱 뒤로 둘 수
-            있어요.
+            있어요. 배경 달력은 같은 PinTime 앱이에요 · 버전 v{APP_VERSION} ·
+            업데이트는 아래 「앱 업데이트」에서 확인하세요.
           </p>
 
           {electron ? (
@@ -648,16 +671,18 @@ export function MyPage() {
           </div>
           <p className="mt-1 text-[11px] leading-relaxed text-rose-700/80">
             캘린더에 저장된 일정을 모두 지웁니다. 되돌릴 수 없습니다.
+            {user
+              ? ' 로그인한 계정의 클라우드 일정도 함께 삭제됩니다.'
+              : ''}
           </p>
           <button
             type="button"
             disabled={schedules.length === 0 && allDay.length === 0}
             onClick={() => {
-              if (
-                !window.confirm(
-                  '캘린더에 있는 일정을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.',
-                )
-              ) {
+              const msg = user
+                ? '캘린더 일정을 모두 삭제할까요? 이 기기와 클라우드(로그인 계정)에서 함께 지워지며 되돌릴 수 없습니다.'
+                : '캘린더에 있는 일정을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.'
+              if (!window.confirm(msg)) {
                 return
               }
               clearCalendar()

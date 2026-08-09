@@ -36,14 +36,14 @@ npm run build && npm run preview
 
 ### 클라우드 계정 (Firebase · 선택)
 
-마이페이지에서 **Google / 이메일**로 로그인하면 캘린더·할 일이 Firestore에 동기화됩니다. env가 없으면 로컬 전용으로 동작합니다.
+마이페이지에서 **Google / 이메일**로 로그인하면 캘린더·할 일·공유 방이 Firestore에 동기화됩니다. env가 없으면 로컬 전용으로 동작합니다.
 
 1. Firebase Console에서 프로젝트 생성 → Authentication: Google + Email/Password  
 2. Firestore 생성 후 [`firestore.rules`](./firestore.rules) 배포  
 3. 웹 앱 SDK config를 `.env` / Netlify·Vercel에 설정 (`.env.example` 참고)  
-4. 승인된 도메인에 `localhost`, Netlify, Vercel 추가  
+4. 승인된 도메인에 `localhost`, **`127.0.0.1`**(데스크톱 앱), `pintime.vercel.app` 추가  
 
-조율 방(공유 링크)은 1단계에서 기존처럼 기기 로컬·링크 방식입니다.
+방 입장용 비밀번호·세션은 클라우드에 올리지 않습니다(기기 로컬). 공유 링크 자체는 기존처럼 기기 로컬·링크 방식입니다.
 
 ### macOS 처음 열기 (Gatekeeper)
 

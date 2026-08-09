@@ -5,28 +5,32 @@ import {
   setDoc,
   type Unsubscribe,
 } from 'firebase/firestore'
+import type { ShareRoom } from '../types'
+import { normalizeRoom } from '../types'
 import { getFirestoreDb, isFirebaseConfigured } from './firebase'
 import {
-  loadRoomSession,
-  saveRoomSession,
-  type RoomSession,
-} from './session'
-import {
   loadCalendar,
+  loadCalendarLocalAt,
   loadMyName,
   loadMyRooms,
   loadRoom,
+  prepareAccountSwitch,
+  replaceMyRooms,
   saveCalendar,
   saveMyName,
-  replaceMyRooms,
   saveRoom,
   setBoundUserId,
+  setCalendarLocalAt,
   type CalendarState,
   type MyRoomRef,
 } from './storage'
-import { loadTodos, saveTodos, type TodoState } from './todos'
-import type { ShareRoom } from '../types'
-import { normalizeRoom } from '../types'
+import {
+  loadTodos,
+  loadTodosLocalAt,
+  saveTodos,
+  setTodosLocalAt,
+  type TodoState,
+} from './todos'
 
 const CAL_EVENT = 'pintime:calendar'
 const ROOMS_EVENT = 'pintime:rooms'
@@ -44,10 +48,11 @@ export type CloudDocMeta = { updatedAt: number }
 export type CloudCalendarDoc = CalendarState & CloudDocMeta
 export type CloudTodosDoc = TodoState & CloudDocMeta
 
+/** sessions는 로컬 전용 — 클라우드에는 비밀번호를 올리지 않음 */
 export type CloudRoomsDoc = {
   refs: MyRoomRef[]
   rooms: ShareRoom[]
-  sessions: Record<string, RoomSession>
+  sessions?: Record<string, never>
   updatedAt: number
 }
 
@@ -56,6 +61,17 @@ export type CloudProfileDoc = {
   email?: string | null
   updatedAt?: number
   createdAt?: number
+}
+
+export type BootstrapSyncResult = {
+  unsub: () => void
+  restored: {
+    calendar: boolean
+    todos: boolean
+    rooms: boolean
+  }
+  hadRemoteData: boolean
+  accountSwitched: boolean
 }
 
 function calendarRef(uid: string) {
@@ -83,28 +99,40 @@ function profileRef(uid: string) {
 }
 
 function hasCalendarData(state: CalendarState | null | undefined) {
-  return Boolean(state && (state.schedules.length > 0 || state.allDay.length > 0))
+  return Boolean(
+    state && (state.schedules.length > 0 || state.allDay.length > 0),
+  )
 }
 
 function hasTodoData(state: TodoState | null | undefined) {
   return Boolean(state && state.items.length > 0)
 }
 
-function hasRoomsData(doc: CloudRoomsDoc | null | undefined) {
-  return Boolean(doc && (doc.rooms.length > 0 || doc.refs.length > 0))
+function hasRoomsData(docData: CloudRoomsDoc | null | undefined) {
+  return Boolean(
+    docData && (docData.rooms.length > 0 || docData.refs.length > 0),
+  )
 }
 
-function collectLocalRooms(): CloudRoomsDoc {
+/** 참가자 비밀번호 제거 후 클라우드용 방 문서 구성 */
+function redactRoomForCloud(room: ShareRoom): ShareRoom {
+  return {
+    ...room,
+    participants: (room.participants ?? []).map((p) => ({
+      ...p,
+      password: '',
+    })),
+  }
+}
+
+function collectLocalRoomsForCloud(): CloudRoomsDoc {
   const refs = loadMyRooms()
   const rooms: ShareRoom[] = []
-  const sessions: Record<string, RoomSession> = {}
   for (const ref of refs) {
     const room = loadRoom(ref.id)
-    if (room) rooms.push(room)
-    const session = loadRoomSession(ref.id)
-    if (session) sessions[ref.id] = session
+    if (room) rooms.push(redactRoomForCloud(room))
   }
-  return { refs, rooms, sessions, updatedAt: Date.now() }
+  return { refs, rooms, updatedAt: Date.now() }
 }
 
 export function isApplyingRemoteCalendar() {
@@ -119,9 +147,10 @@ export function isApplyingRemoteRooms() {
   return APPLYING_REMOTE.rooms || bootstrapping
 }
 
-/** 캘린더/할 일 전체 삭제 시 — 빈 상태도 클라우드에 반영 */
+/** 캘린더/할 일/방 전체 삭제 시 — 빈 상태도 클라우드에 반영 */
 let forceEmptyCalendarPush = false
 let forceEmptyTodosPush = false
+let forceEmptyRoomsPush = false
 
 export function allowNextEmptyCalendarPush() {
   forceEmptyCalendarPush = true
@@ -131,11 +160,14 @@ export function allowNextEmptyTodosPush() {
   forceEmptyTodosPush = true
 }
 
+export function allowNextEmptyRoomsPush() {
+  forceEmptyRoomsPush = true
+}
+
 export async function pushCalendar(uid: string, state: CalendarState) {
   const ref = calendarRef(uid)
   if (!ref) return
 
-  // 빈 데이터로 클라우드에 이미 있는 일정을 지우지 않음 (기기 초기화·레이스 방지)
   if (!hasCalendarData(state) && !forceEmptyCalendarPush) {
     const snap = await getDoc(ref)
     if (snap.exists() && hasCalendarData(snap.data() as CloudCalendarDoc)) {
@@ -144,7 +176,9 @@ export async function pushCalendar(uid: string, state: CalendarState) {
   }
   forceEmptyCalendarPush = false
 
-  await setDoc(ref, { ...state, updatedAt: Date.now() })
+  const updatedAt = Date.now()
+  await setDoc(ref, { ...state, updatedAt })
+  setCalendarLocalAt(updatedAt)
 }
 
 export async function pushTodos(uid: string, state: TodoState) {
@@ -159,14 +193,30 @@ export async function pushTodos(uid: string, state: TodoState) {
   }
   forceEmptyTodosPush = false
 
-  await setDoc(ref, { ...state, updatedAt: Date.now() })
+  const updatedAt = Date.now()
+  await setDoc(ref, { ...state, updatedAt })
+  setTodosLocalAt(updatedAt)
 }
 
 export async function pushRooms(uid: string, docData?: CloudRoomsDoc) {
   const ref = roomsRef(uid)
   if (!ref) return
-  const payload = docData ?? collectLocalRooms()
-  await setDoc(ref, { ...payload, updatedAt: Date.now() })
+  const payload = docData ?? collectLocalRoomsForCloud()
+  const redacted: CloudRoomsDoc = {
+    refs: payload.refs,
+    rooms: payload.rooms.map(redactRoomForCloud),
+    updatedAt: Date.now(),
+  }
+
+  if (!hasRoomsData(redacted) && !forceEmptyRoomsPush) {
+    const snap = await getDoc(ref)
+    if (snap.exists() && hasRoomsData(snap.data() as CloudRoomsDoc)) {
+      return
+    }
+  }
+  forceEmptyRoomsPush = false
+
+  await setDoc(ref, redacted)
 }
 
 export async function pushProfile(
@@ -229,10 +279,11 @@ export function schedulePushRooms() {
   }, 500)
 }
 
-function applyCalendarLocal(state: CalendarState) {
+function applyCalendarLocal(state: CalendarState, remoteAt?: number) {
   APPLYING_REMOTE.calendar = true
   try {
     saveCalendar(state)
+    if (typeof remoteAt === 'number') setCalendarLocalAt(remoteAt)
     window.dispatchEvent(new CustomEvent(CAL_EVENT, { detail: state }))
   } finally {
     window.setTimeout(() => {
@@ -241,10 +292,11 @@ function applyCalendarLocal(state: CalendarState) {
   }
 }
 
-function applyTodosLocal(state: TodoState) {
+function applyTodosLocal(state: TodoState, remoteAt?: number) {
   APPLYING_REMOTE.todos = true
   try {
     saveTodos(state)
+    if (typeof remoteAt === 'number') setTodosLocalAt(remoteAt)
   } finally {
     window.setTimeout(() => {
       APPLYING_REMOTE.todos = false
@@ -257,24 +309,22 @@ function applyRoomsLocal(data: CloudRoomsDoc) {
   try {
     const refs = Array.isArray(data.refs) ? data.refs : []
     const rooms = Array.isArray(data.rooms) ? data.rooms : []
-    const sessions =
-      data.sessions && typeof data.sessions === 'object' ? data.sessions : {}
 
     for (const raw of rooms) {
       try {
         const room = normalizeRoom(raw)
-        saveRoom(room)
+        // 클라우드에 비밀번호가 있어도 쓰지 않음
+        saveRoom({
+          ...room,
+          participants: room.participants.map((p) => ({ ...p, password: '' })),
+        })
       } catch {
         /* skip bad room */
       }
     }
 
     replaceMyRooms(refs.filter((r) => r?.id))
-
-    for (const [roomId, session] of Object.entries(sessions)) {
-      if (session?.name) saveRoomSession(roomId, session)
-    }
-
+    // sessions는 클라우드에서 복원하지 않음 (기기에서 다시 입장)
     window.dispatchEvent(new CustomEvent(ROOMS_EVENT))
   } finally {
     window.setTimeout(() => {
@@ -298,14 +348,22 @@ function pickSide(
 }
 
 /** 로그인 직후: 클라우드 → 이 기기 복원(또는 첫 업로드) 후 실시간 구독 */
-export async function bootstrapCloudSync(uid: string): Promise<{
-  unsub: () => void
-}> {
+export async function bootstrapCloudSync(
+  uid: string,
+): Promise<BootstrapSyncResult> {
+  const empty: BootstrapSyncResult = {
+    unsub: () => undefined,
+    restored: { calendar: false, todos: false, rooms: false },
+    hadRemoteData: false,
+    accountSwitched: false,
+  }
+
   if (!isFirebaseConfigured()) {
-    return { unsub: () => undefined }
+    return empty
   }
 
   bootstrapping = true
+  const accountSwitched = prepareAccountSwitch(uid)
   setCloudSyncUid(uid)
   setBoundUserId(uid)
 
@@ -315,16 +373,20 @@ export async function bootstrapCloudSync(uid: string): Promise<{
   const pRef = profileRef(uid)
   if (!cRef || !tRef || !rRef) {
     bootstrapping = false
-    return { unsub: () => undefined }
+    return { ...empty, accountSwitched }
   }
+
+  const restored = { calendar: false, todos: false, rooms: false }
+  let hadRemoteData = false
 
   try {
     const localCal = loadCalendar() ?? { schedules: [], allDay: [] }
     const localTodos = loadTodos()
-    const localRooms = collectLocalRooms()
+    const localRooms = collectLocalRoomsForCloud()
     const localRoomsAt = Math.max(
       0,
       ...localRooms.refs.map((r) => r.updatedAt || 0),
+      localRooms.updatedAt || 0,
     )
 
     const [remoteCalSnap, remoteTodoSnap, remoteRoomsSnap, remoteProfileSnap] =
@@ -349,7 +411,12 @@ export async function bootstrapCloudSync(uid: string): Promise<{
         ? (remoteProfileSnap.data() as CloudProfileDoc)
         : null
 
-    // 이름: 클라우드 또는 로컬 → 양방향
+    hadRemoteData = Boolean(
+      hasCalendarData(remoteCal ?? undefined) ||
+        hasTodoData(remoteTodos ?? undefined) ||
+        hasRoomsData(remoteRooms ?? undefined),
+    )
+
     const cloudName = remoteProfile?.displayName?.trim() || ''
     const localName = loadMyName().trim()
     if (cloudName && !localName) {
@@ -364,29 +431,39 @@ export async function bootstrapCloudSync(uid: string): Promise<{
       hasCalendarData(remoteCal ?? undefined),
       hasCalendarData(localCal),
       remoteCal?.updatedAt ?? 0,
-      0,
+      loadCalendarLocalAt(),
     )
     if (calSide === 'local') {
       await pushCalendar(uid, localCal)
     } else if (calSide === 'remote' && remoteCal) {
-      applyCalendarLocal({
-        schedules: Array.isArray(remoteCal.schedules) ? remoteCal.schedules : [],
-        allDay: Array.isArray(remoteCal.allDay) ? remoteCal.allDay : [],
-      })
+      applyCalendarLocal(
+        {
+          schedules: Array.isArray(remoteCal.schedules)
+            ? remoteCal.schedules
+            : [],
+          allDay: Array.isArray(remoteCal.allDay) ? remoteCal.allDay : [],
+        },
+        remoteCal.updatedAt,
+      )
+      restored.calendar = true
     }
 
     const todoSide = pickSide(
       hasTodoData(remoteTodos ?? undefined),
       hasTodoData(localTodos),
       remoteTodos?.updatedAt ?? 0,
-      0,
+      loadTodosLocalAt(),
     )
     if (todoSide === 'local') {
       await pushTodos(uid, localTodos)
     } else if (todoSide === 'remote' && remoteTodos) {
-      applyTodosLocal({
-        items: Array.isArray(remoteTodos.items) ? remoteTodos.items : [],
-      })
+      applyTodosLocal(
+        {
+          items: Array.isArray(remoteTodos.items) ? remoteTodos.items : [],
+        },
+        remoteTodos.updatedAt,
+      )
+      restored.todos = true
     }
 
     const roomsSide = pickSide(
@@ -401,15 +478,11 @@ export async function bootstrapCloudSync(uid: string): Promise<{
       applyRoomsLocal({
         refs: Array.isArray(remoteRooms.refs) ? remoteRooms.refs : [],
         rooms: Array.isArray(remoteRooms.rooms) ? remoteRooms.rooms : [],
-        sessions:
-          remoteRooms.sessions && typeof remoteRooms.sessions === 'object'
-            ? remoteRooms.sessions
-            : {},
         updatedAt: remoteRooms.updatedAt ?? Date.now(),
       })
+      restored.rooms = true
     }
   } finally {
-    // React state 반영 여유
     window.setTimeout(() => {
       bootstrapping = false
     }, 1500)
@@ -433,7 +506,7 @@ export async function bootstrapCloudSync(uid: string): Promise<{
       ) {
         return
       }
-      applyCalendarLocal(next)
+      applyCalendarLocal(next, data.updatedAt)
     }),
   )
 
@@ -447,7 +520,7 @@ export async function bootstrapCloudSync(uid: string): Promise<{
       }
       const local = loadTodos()
       if (JSON.stringify(local.items) === JSON.stringify(next.items)) return
-      applyTodosLocal(next)
+      applyTodosLocal(next, data.updatedAt)
     }),
   )
 
@@ -459,16 +532,26 @@ export async function bootstrapCloudSync(uid: string): Promise<{
       const next: CloudRoomsDoc = {
         refs: Array.isArray(data.refs) ? data.refs : [],
         rooms: Array.isArray(data.rooms) ? data.rooms : [],
-        sessions:
-          data.sessions && typeof data.sessions === 'object'
-            ? data.sessions
-            : {},
         updatedAt: data.updatedAt ?? 0,
       }
-      const local = collectLocalRooms()
+      const local = collectLocalRoomsForCloud()
       if (
         JSON.stringify(local.refs) === JSON.stringify(next.refs) &&
-        JSON.stringify(local.rooms) === JSON.stringify(next.rooms)
+        JSON.stringify(
+          local.rooms.map((r) => ({
+            ...r,
+            participants: r.participants.map((p) => ({ ...p, password: '' })),
+          })),
+        ) ===
+          JSON.stringify(
+            next.rooms.map((r) => ({
+              ...r,
+              participants: (r.participants ?? []).map((p) => ({
+                ...p,
+                password: '',
+              })),
+            })),
+          )
       ) {
         return
       }
@@ -485,6 +568,9 @@ export async function bootstrapCloudSync(uid: string): Promise<{
       if (todoTimer) clearTimeout(todoTimer)
       if (roomsTimer) clearTimeout(roomsTimer)
     },
+    restored,
+    hadRemoteData,
+    accountSwitched,
   }
 }
 

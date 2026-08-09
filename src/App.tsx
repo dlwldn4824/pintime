@@ -5,6 +5,7 @@ import { AnalyticsRouteTracker } from './components/AnalyticsRouteTracker'
 import { AppSidebar } from './components/AppSidebar'
 import { BottomNav } from './components/BottomNav'
 import { PinTimeLogo } from './components/PinTimeLogo'
+import { SyncBanner } from './components/SyncBanner'
 import { CalendarProvider } from './context/CalendarContext'
 import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
@@ -56,6 +57,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <SyncBanner />
         {/* 사이드바 닫힘 · 데스크탑: 열기 버튼만 (네비는 폰과 같은 하단바) */}
         {!sidebarOpen && (
           <header className="relative z-30 hidden shrink-0 items-center border-b border-[var(--line)] bg-white/90 px-4 py-2.5 backdrop-blur-md lg:flex">
