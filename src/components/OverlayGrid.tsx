@@ -188,7 +188,7 @@ export function OverlayGrid({
             </h3>
             <p className="mt-0.5 text-xs text-slate-500">
               초록이 진할수록 더 많은 사람이 가능해요
-              {onSelectRange ? ' · 초록 칸을 드래그해 구간 선택' : ''}
+              {onSelectRange ? ' · 드래그로 선택' : ''}
             </p>
           </div>
         </div>
@@ -414,7 +414,7 @@ export function OverlayGrid({
           </p>
           {onSelectRange && (
             <p className="mt-1 text-[10px] text-[var(--tomato-soft)]">
-              드래그하면 그 길이로 확정할 수 있어요
+              드래그로 길이 선택
             </p>
           )}
         </div>

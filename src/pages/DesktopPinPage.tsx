@@ -53,9 +53,6 @@ export function DesktopPinPage() {
           <h2 className="text-sm font-bold tracking-tight text-[var(--ink)]">
             내 캘린더
           </h2>
-          <p className="text-[10px] text-[var(--muted)]">
-            위쪽을 드래그해 이동 · 모서리로 크기 조절
-          </p>
         </div>
         <div className="pt-pin-no-drag flex shrink-0 items-center gap-1.5">
           <div className="inline-flex rounded-full bg-slate-100 p-0.5">

@@ -11,7 +11,7 @@ type ColorPickerProps = {
 export function ColorPicker({ value, onChange }: ColorPickerProps) {
   return (
     <div>
-      <p className="text-[11px] font-medium text-slate-500">색상</p>
+      <p className="text-[11px] font-bold text-[var(--muted)]">색상</p>
       <div className="mt-1.5 flex flex-wrap gap-2">
         {EVENT_COLORS.map((c) => {
           const on = value === c.id

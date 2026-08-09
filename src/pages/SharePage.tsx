@@ -400,7 +400,7 @@ export function SharePage() {
 
           {rooms.length === 0 ? (
             <p className="mt-4 text-xs text-slate-400">
-              아직 참여 중인 조율 방이 없어요. 위를 눌러 새 방을 만들어 보세요.
+              참여 중인 방이 없습니다.
             </p>
           ) : (
             <ul className="mt-3 space-y-2">

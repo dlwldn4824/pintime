@@ -83,18 +83,16 @@ export function AppSidebar({
 }: {
   onCollapse?: () => void
 }) {
-  const { selectedDate, goToDate, monthCursor } = useCalendar()
+  const {
+    selectedDate,
+    goToDate,
+    monthCursor,
+    setMonthCursor,
+    setView,
+  } = useCalendar()
   const navigate = useNavigate()
   const now = new Date()
-  const [cursor, setCursor] = useState({
-    year: monthCursor.year,
-    month: monthCursor.month,
-  })
   const [todos, setTodos] = useState<TodoItem[]>(() => loadTodos().items)
-
-  useEffect(() => {
-    setCursor({ year: monthCursor.year, month: monthCursor.month })
-  }, [monthCursor.year, monthCursor.month])
 
   useEffect(() => {
     const refresh = () => setTodos(loadTodos().items)
@@ -108,8 +106,8 @@ export function AppSidebar({
 
   const todayKey = toDateKey(now)
   const cells = useMemo(
-    () => buildMiniCells(cursor.year, cursor.month),
-    [cursor.year, cursor.month],
+    () => buildMiniCells(monthCursor.year, monthCursor.month),
+    [monthCursor.year, monthCursor.month],
   )
 
   const openDate = (dateKey: string) => {
@@ -140,7 +138,7 @@ export function AppSidebar({
   )
   const empty = standingOpen.length === 0 && dailyOpen.length === 0
 
-  const monthLabel = `${cursor.year}년 ${cursor.month + 1}월`
+  const monthLabel = `${monthCursor.year}년 ${monthCursor.month + 1}월`
 
   return (
     <aside className="flex h-full w-[280px] shrink-0 flex-col bg-[var(--sidebar)] text-white">
@@ -180,8 +178,9 @@ export function AppSidebar({
             <button
               type="button"
               onClick={() => {
-                const d = new Date(cursor.year, cursor.month - 1, 1)
-                setCursor({ year: d.getFullYear(), month: d.getMonth() })
+                const d = new Date(monthCursor.year, monthCursor.month - 1, 1)
+                setMonthCursor({ year: d.getFullYear(), month: d.getMonth() })
+                setView('month')
               }}
               className="rounded-lg p-1 text-[var(--sidebar-muted)] hover:bg-white/10 hover:text-white"
               aria-label="이전 달"
@@ -200,8 +199,9 @@ export function AppSidebar({
             <button
               type="button"
               onClick={() => {
-                const d = new Date(cursor.year, cursor.month + 1, 1)
-                setCursor({ year: d.getFullYear(), month: d.getMonth() })
+                const d = new Date(monthCursor.year, monthCursor.month + 1, 1)
+                setMonthCursor({ year: d.getFullYear(), month: d.getMonth() })
+                setView('month')
               }}
               className="rounded-lg p-1 text-[var(--sidebar-muted)] hover:bg-white/10 hover:text-white"
               aria-label="다음 달"

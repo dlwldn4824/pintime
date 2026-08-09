@@ -159,16 +159,6 @@ export function CalendarPage() {
           <h2 className="text-base font-bold tracking-tight text-[var(--ink)]">
             내 캘린더
           </h2>
-          {view === 'week' && (
-            <p className="text-xs text-[var(--muted)]">
-              날짜를 눌러 일정을 보고 · 빈 칸을 드래그해 추가하세요
-            </p>
-          )}
-          {view === 'month' && (
-            <p className="text-xs text-[var(--muted)]">
-              날짜를 누르면 그날 일정이 열려요 · +로 추가 · 일정을 눌러 수정
-            </p>
-          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
