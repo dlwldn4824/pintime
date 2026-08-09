@@ -182,8 +182,8 @@ export function MyPage() {
             <h2 className="text-sm font-bold text-[var(--ink)]">계정</h2>
           </div>
           <p className="mt-1 text-[11px] leading-relaxed text-[var(--muted)]">
-            계정을 만들면 캘린더와 할 일이 저장되어, 다른 기기에서도 그대로
-            이어서 쓸 수 있어요.
+            계정을 만들면 캘린더·할 일·공유 방이 저장돼요. 새 앱을 깔고
+            같은 계정으로 로그인하면 자동으로 불러와요.
           </p>
 
           {!firebaseOn ? (
@@ -235,10 +235,10 @@ export function MyPage() {
                 )}
                 <p className="mt-1 text-[11px] text-[var(--muted)]">
                   {syncing
-                    ? '저장 중…'
+                    ? '다른 기기 데이터 불러오는 중…'
                     : syncError
-                      ? `저장 오류: ${syncError}`
-                      : '로그인됨 · 일정이 기기에 맞춰 저장돼요'}
+                      ? `동기화 오류: ${syncError}`
+                      : '로그인됨 · 일정·할 일·공유 방이 계정에 동기화돼요'}
                 </p>
               </div>
               {authOk && (

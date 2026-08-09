@@ -60,6 +60,10 @@ export function saveRoom(room: ShareRoom) {
   window.dispatchEvent(
     new CustomEvent('pintime:room', { detail: { id: normalized.id } }),
   )
+  void import('./cloudSync').then((m) => {
+    if (m.isApplyingRemoteRooms()) return
+    m.schedulePushRooms()
+  })
 }
 
 export function loadMyName(): string {
@@ -94,6 +98,13 @@ export function loadUserId(): string {
   return id
 }
 
+/** 로그인 계정과 동일 기기로 묶어, 새 기기에서도 같은 참가자로 인식 */
+export function setBoundUserId(uid: string) {
+  const trimmed = uid.trim()
+  if (!trimmed) return
+  localStorage.setItem(MY_USER_ID_KEY, trimmed)
+}
+
 export function loadMyRooms(): MyRoomRef[] {
   try {
     const raw = localStorage.getItem(MY_ROOMS_KEY)
@@ -104,16 +115,32 @@ export function loadMyRooms(): MyRoomRef[] {
   }
 }
 
+function scheduleRoomsCloudPush() {
+  void import('./cloudSync').then((m) => {
+    if (m.isApplyingRemoteRooms()) return
+    m.schedulePushRooms()
+  })
+}
+
 export function trackMyRoom(ref: MyRoomRef) {
   const list = loadMyRooms().filter((r) => r.id !== ref.id)
   list.unshift(ref)
   localStorage.setItem(MY_ROOMS_KEY, JSON.stringify(list.slice(0, 30)))
+  scheduleRoomsCloudPush()
+}
+
+/** 클라우드에서 받은 방 목록으로 통째로 교체 */
+export function replaceMyRooms(refs: MyRoomRef[]) {
+  localStorage.setItem(MY_ROOMS_KEY, JSON.stringify(refs.slice(0, 30)))
+  window.dispatchEvent(new CustomEvent('pintime:rooms'))
+  scheduleRoomsCloudPush()
 }
 
 export function removeMyRoom(id: string) {
   const list = loadMyRooms().filter((r) => r.id !== id)
   localStorage.setItem(MY_ROOMS_KEY, JSON.stringify(list))
   localStorage.removeItem(ROOM_PREFIX + id)
+  scheduleRoomsCloudPush()
 }
 
 /** 로컬 테스트 데이터 전부 삭제 (캘린더·방·세션·이름) */

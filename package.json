@@ -1,7 +1,7 @@
 {
   "name": "pintime",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "PinTime — AI schedule agent calendar",
   "author": "PinTime",
   "type": "module",

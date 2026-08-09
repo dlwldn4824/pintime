@@ -66,6 +66,9 @@ export function SharePage() {
 
   useEffect(() => {
     refreshRooms()
+    const onRooms = () => refreshRooms()
+    window.addEventListener('pintime:rooms', onRooms)
+    return () => window.removeEventListener('pintime:rooms', onRooms)
   }, [])
 
   useEffect(() => {

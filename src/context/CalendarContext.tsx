@@ -14,7 +14,10 @@ import {
   confirmOverwriteManualRooms,
   syncMyAvailabilityAcrossRooms,
 } from '../lib/calendarRoomSync'
-import { onCalendarRemote } from '../lib/cloudSync'
+import {
+  allowNextEmptyCalendarPush,
+  onCalendarRemote,
+} from '../lib/cloudSync'
 import { syncCalendarTodos } from '../lib/scheduleTodos'
 import { loadCalendar, saveCalendar } from '../lib/storage'
 import {
@@ -145,6 +148,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const clearCalendar = useCallback(() => {
+    allowNextEmptyCalendarPush()
     setSchedules([])
     setAllDay([])
   }, [])
