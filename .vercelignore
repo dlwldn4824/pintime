@@ -1,0 +1,10 @@
+node_modules
+release
+dist
+.git
+.env*
+!.env.example
+.netlify
+*.dmg
+*.exe
+*.blockmap
